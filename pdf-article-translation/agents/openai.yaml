@@ -1,0 +1,3 @@
+interface:
+  display_name: "PDF Article Translation"
+  short_description: "Extract articles, translate to Russian, and revise figure crops"

@@ -1,0 +1,87 @@
+# PDF article translation
+
+Extract a PDF article into Markdown with figures, translate it into Russian,
+and optionally build both PDFs using Pandoc, pdflatex, and your LaTeX header.
+The agent reconstructs and translates the article; the helper script performs
+repeatable extraction, cropping, validation, and build operations. The script
+does not call an LLM API.
+
+See the [repository README](../README.md) for installation. Agent instructions
+are in [SKILL.md](SKILL.md).
+
+## First use
+
+Invoke `$pdf-article-translation` and provide the input PDF, a new output
+directory, and your existing `header.tex`. For example:
+
+```text
+Use $pdf-article-translation with ~/papers/input.pdf.
+Write the original article and Russian translation to ~/translations/example.
+Build both PDFs using ~/translations/gridBased1996Schneiders/header.tex.
+Record figure extraction commands and visually inspect the figures.
+```
+
+The result contains:
+
+```text
+example/
+  source.pdf              Copy of input; never edited
+  article.md              Reconstructed original article
+  article.ru.md           Russian translation
+  images/figure-01.png    Shared figure files
+  figures.json            Coordinates and revision history
+  image-extraction.md     Commands and figure previews
+  raw/                    Extracted text and OCR evidence
+  pages/                  Full-page images for visual review
+  article.pdf             Built when requested
+  article.ru.pdf          Built when requested
+```
+
+The script creates extraction evidence, figures, and the journal. The agent
+writes the two article Markdown files after comparing the PDF with that
+evidence. It cannot guarantee flawless OCR, transcription, or translation.
+
+For corrections, refer to stable IDs and edges in natural language:
+
+```text
+In figure-03 the left edge is clipped. Figure-07 has too much space below it.
+Correct these crops, inspect the results, and rebuild both PDFs.
+```
+
+The agent chooses pixel adjustments using the source page. You can also give
+exact amounts. From the repository root (`~/dev/skills`), a script-only correction looks like:
+
+```bash
+python3 pdf-article-translation/scripts/article.py adjust \
+  /path/to/example --id figure-03 --left 40 --note 'Restore left labels'
+```
+
+Positive values expand an edge; negative values remove space at that edge.
+The script rejects rectangles outside the page and always renders from the
+original PDF. Commands in `image-extraction.md` can recreate the current
+PNGs from the workspace root. Use the script to change coordinates so that
+its JSON record and generated Markdown journal stay synchronized.
+
+## Dependencies and validation
+
+Use Python 3.11+, Poppler (`pdfinfo`, `pdftotext`, `pdftoppm`), and Pandoc.
+Scans additionally need Tesseract and the original language's OCR data.
+PDF builds use pdflatex and the packages required by your header, including
+Cyrillic support. The header is supplied per build and is not bundled here.
+
+Pandoc builds are performed from the output directory. A header's relative
+`input` paths must resolve from there; use absolute paths or copy its assets
+into the workspace as appropriate. Rebuilt PDFs preserve content and logical
+structure rather than the original page layout.
+
+Run the behavior checks from the repository root (`~/dev/skills`):
+
+```bash
+python3 -m unittest discover -s pdf-article-translation/tests -v
+```
+
+They exercise actual Poppler/Pandoc commands, edge adjustments, replay of
+crops, rejected out-of-bounds changes, source integrity, and formula drift.
+
+Tool references: [Pandoc manual](https://pandoc.org/MANUAL.html) and
+[pdftoppm options](https://manpages.debian.org/bookworm/poppler-utils/pdftoppm.1.en.html).
