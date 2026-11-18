@@ -1,6 +1,6 @@
 ---
 name: pdf-article-translation
-description: Turn PDF articles into faithful Markdown and Russian translations with figures, record reproducible crops, revise image edges, and build PDFs using Pandoc and a supplied LaTeX header.
+description: Turn PDF articles into faithful Markdown and Russian translations with figures, record reproducible crops, revise image edges, and build PDFs using Pandoc with a built-in or custom LaTeX header.
 ---
 
 # PDF article translation
@@ -85,13 +85,18 @@ image filename. Rebuild PDFs after corrections.
 
 ## Build PDFs
 
-Use the user's existing LaTeX preamble fragment and inspect it before
-diagnosing failures. It must support pdflatex and Cyrillic for Russian.
-Resolve unsupported Unicode deliberately without silently losing content.
+The script includes a default pdflatex preamble with Cyrillic support.
+On build it creates `header.tex` in the workspace if absent, and uses an
+existing workspace header unchanged. The user can edit that file for later
+builds. Inspect the active header before diagnosing failures. Resolve
+unsupported Unicode deliberately without silently losing content.
 
 ```bash
-python3 "$tool" build output-directory --header /absolute/path/header.tex
+python3 "$tool" build output-directory
 ```
+
+To use another preamble, add `--header /absolute/path/header.tex`. This uses
+that file directly without creating or replacing the workspace header.
 
 Build only when requested. This checks both Markdown files and compiles
 `article.pdf` and `article.ru.pdf` using `--pdf-engine=pdflatex`. Images resolve

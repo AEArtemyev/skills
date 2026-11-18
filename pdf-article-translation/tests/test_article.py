@@ -112,6 +112,35 @@ class ArticleTest(unittest.TestCase):
         target.write_text("")
         self.assertIn("article is empty", self.call("check", self.workspace, success=False).stderr)
 
+    @unittest.skipUnless(shutil.which("pdflatex"), "pdflatex is required")
+    def test_build_default_header_and_preserve_local_edits(self):
+        for filename, title in (("article.md", "Article"),
+                                ("article.ru.md", "\u041f\u0440\u0438\u0432\u0435\u0442")):
+            (self.workspace / filename).write_text(
+                f"# {title}\n\nText $x^2$.\n\n![Diagram](images/figure-01.png)\n",
+                encoding="utf-8",
+            )
+        self.call("build", self.workspace)
+        header = self.workspace / "header.tex"
+        self.assertTrue(header.is_file())
+        for filename in ("article.pdf", "article.ru.pdf"):
+            self.assertTrue((self.workspace / filename).read_bytes().startswith(b"%PDF-"))
+        extracted = article.run(["pdftotext", self.workspace / "article.ru.pdf", "-"])
+        self.assertIn("\u041f\u0440\u0438\u0432\u0435\u0442", extracted)
+
+        edited = header.read_text() + "\n% User formatting change\n"
+        header.write_text(edited, encoding="utf-8")
+        self.call("build", self.workspace)
+        self.assertEqual(header.read_text(), edited)
+
+        # An explicit header takes precedence even if the local one is invalid.
+        custom = self.workspace.parent / "custom header.tex"
+        custom.write_text(edited, encoding="utf-8")
+        header.write_text("\\undefinedLocalCommand\n", encoding="utf-8")
+        self.call("build", self.workspace, "--header", custom)
+        self.assertEqual(header.read_text(), "\\undefinedLocalCommand\n")
+        self.assertEqual(custom.read_text(), edited)
+
 
 if __name__ == "__main__":
     unittest.main()

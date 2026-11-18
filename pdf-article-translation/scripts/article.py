@@ -17,6 +17,24 @@ import tempfile
 from urllib.parse import unquote, urlsplit
 
 
+DEFAULT_HEADER = r"""% Default preamble for Pandoc and pdflatex.
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian,english]{babel}
+\usepackage{cmap}
+
+\usepackage[a4paper,margin=25mm]{geometry}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+\usepackage{amsmath,amssymb,mathtools,cancel}
+
+\usepackage{graphicx}
+\usepackage{grffile}
+\usepackage{float}
+"""
+
+
 def run(command, cwd=None):
     result = subprocess.run(
         [str(item) for item in command], cwd=cwd, capture_output=True,
@@ -189,9 +207,17 @@ def check(root, data):
     print("Completeness and translation accuracy require a separate visual review.")
 
 
-def build(root, data, header):
-    header = header.resolve(strict=True)
+def build(root, data, header=None):
     check(root, data)
+    if header is None:
+        header = root / "header.tex"
+        try:
+            with header.open("x", encoding="utf-8") as stream:
+                stream.write(DEFAULT_HEADER)
+            print(f"Created {header}")
+        except FileExistsError:
+            pass  # Preserve local edits and use the existing header.
+    header = header.resolve(strict=True)
     for filename in ("article", "article.ru"):
         with tempfile.TemporaryDirectory(dir=root) as temporary:
             output = Path(temporary) / f"{filename}.pdf"
@@ -233,7 +259,9 @@ def main():
             for edge in ("left", "top", "right", "bottom"):
                 command.add_argument(f"--{edge}", type=int, default=0)
         if name == "build":
-            command.add_argument("--header", type=Path, required=True)
+            command.add_argument("--header", type=Path,
+                                 help="Custom preamble; default: workspace/header.tex "
+                                      "(created from the built-in template if absent)")
     args = parser.parse_args()
     try:
         if args.command == "prepare":

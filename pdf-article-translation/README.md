@@ -1,7 +1,8 @@
 # PDF article translation
 
 Extract a PDF article into Markdown with figures, translate it into Russian,
-and optionally build both PDFs using Pandoc, pdflatex, and your LaTeX header.
+and optionally build both PDFs using Pandoc, pdflatex, and a built-in or
+custom LaTeX header.
 The agent reconstructs and translates the article; the helper script performs
 repeatable extraction, cropping, validation, and build operations. The script
 does not call an LLM API.
@@ -11,13 +12,13 @@ are in [SKILL.md](SKILL.md).
 
 ## First use
 
-Invoke `$pdf-article-translation` and provide the input PDF, a new output
-directory, and your existing `header.tex`. For example:
+Invoke `$pdf-article-translation` and provide the input PDF and a new output
+directory. For example:
 
 ```text
 Use $pdf-article-translation with ~/papers/input.pdf.
 Write the original article and Russian translation to ~/translations/example.
-Build both PDFs using ~/translations/gridBased1996Schneiders/header.tex.
+Build both PDFs using the default header.
 Record figure extraction commands and visually inspect the figures.
 ```
 
@@ -33,6 +34,7 @@ example/
   image-extraction.md     Commands and figure previews
   raw/                    Extracted text and OCR evidence
   pages/                  Full-page images for visual review
+  header.tex              Default preamble created on build if absent
   article.pdf             Built when requested
   article.ru.pdf          Built when requested
 ```
@@ -66,8 +68,28 @@ its JSON record and generated Markdown journal stay synchronized.
 
 Use Python 3.11+, Poppler (`pdfinfo`, `pdftotext`, `pdftoppm`), and Pandoc.
 Scans additionally need Tesseract and the original language's OCR data.
-PDF builds use pdflatex and the packages required by your header, including
-Cyrillic support. The header is supplied per build and is not bundled here.
+PDF builds use pdflatex and the packages required by the header, including
+Cyrillic support. The built-in preamble uses T2A/UTF-8 encodings, Russian and
+English Babel, cmap, geometry, amsmath, amssymb, mathtools, cancel, graphicx,
+grffile, and float, matching the previously supplied header's settings.
+
+From the repository root, build both Markdown files with:
+
+```bash
+python3 pdf-article-translation/scripts/article.py build /path/to/example
+```
+
+If the workspace has no `header.tex`, the script creates it from the built-in
+template. Existing headers are used unchanged, so local formatting edits
+survive subsequent builds. To use an external header instead:
+
+```bash
+python3 pdf-article-translation/scripts/article.py build /path/to/example \
+  --header /path/to/custom-header.tex
+```
+
+An explicit `--header` uses that file directly; it does not create or replace
+the workspace header.
 
 Pandoc builds are performed from the output directory. A header's relative
 `input` paths must resolve from there; use absolute paths or copy its assets
