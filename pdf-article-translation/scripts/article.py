@@ -54,6 +54,19 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def create_git_files(root):
+    for name, content in (
+        (".gitignore", "/source.pdf\n/article.pdf\n/article.ru.pdf\n"),
+        (".gitattributes", "* text=auto eol=lf\n"),
+    ):
+        try:
+            with (root / name).open("x", encoding="utf-8", newline="\n") as stream:
+                stream.write(content)
+            print(f"Created {root / name}")
+        except FileExistsError:
+            print(f"Preserved {root / name}")
+
+
 def crop_command(data, name, figure):
     x, y, width, height = figure["box"]
     return list(map(str, ["pdftoppm", "-f", figure["page"], "-l", figure["page"],
@@ -123,6 +136,7 @@ def prepare(args):
     root.mkdir(parents=True, exist_ok=False)
     for folder in ("raw", "pages", "images"):
         (root / folder).mkdir()
+    create_git_files(root)
     shutil.copyfile(source, root / "source.pdf")
     (root / "raw/pdfinfo.txt").write_text(info, encoding="utf-8")
     data = dict(version=1, dpi=args.dpi, page_count=int(match[1]),
@@ -220,6 +234,7 @@ def resolve_header(root, header=None):
 
 
 def write_readme(root, header=None):
+    create_git_files(root)
     pending = []
     for name, source, instructions in (
         ("README.md", "article.md",

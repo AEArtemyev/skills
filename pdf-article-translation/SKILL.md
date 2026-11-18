@@ -19,6 +19,8 @@ to this script. Reconstruction and translation are the agent's responsibility.
 
 1. Run `python3 "$tool" prepare input.pdf output-directory`. The directory
    must be new. This copies the PDF and extracts evidence into `raw/`.
+   It also creates `.gitignore` for the three workspace PDFs and
+   `.gitattributes` with `* text=auto eol=lf` for text file line endings.
    Raw extraction is not finished Markdown.
 2. Run `python3 "$tool" page output-directory --page 1` and inspect the
    generated page image. Compare extracted text with rendered pages. Repeat
@@ -75,6 +77,8 @@ This also creates the default `header.tex` if absent, so the instructions
 work without the skill installed. For a custom header, add `--header PATH`.
 Existing README files are preserved; inspect them for accurate instructions
 when changing the header or article title.
+The `readme` and `build` commands also create missing Git configuration files
+for older workspaces. Existing `.gitignore` and `.gitattributes` are preserved.
 
 ## Correct figure edges
 

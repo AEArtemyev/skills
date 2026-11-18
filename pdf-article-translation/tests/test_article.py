@@ -93,6 +93,41 @@ class ArticleTest(unittest.TestCase):
         self.call("prepare", self.source, self.workspace, success=False)
         self.assertEqual(article.png_size(self.workspace / "images/figure-01.png"), (50, 60))
 
+    @unittest.skipUnless(shutil.which("git"), "Git is required")
+    def test_git_rules_ignore_only_workspace_pdfs_and_normalize_text(self):
+        article.run(["git", "init", "--quiet", self.workspace])
+        for name in ("source.pdf", "article.pdf", "article.ru.pdf"):
+            self.assertEqual(article.run(["git", "check-ignore", name],
+                                         cwd=self.workspace).strip(), name)
+        result = subprocess.run(["git", "check-ignore", "other.pdf", "article.md",
+                                 "images/figure-01.png", "nested/source.pdf"],
+                                cwd=self.workspace, capture_output=True)
+        self.assertEqual(result.returncode, 1)
+        text = self.workspace / "notes.md"
+        text.write_bytes(b"First\r\nSecond\r\n")
+        normalized = subprocess.run(["git", "hash-object", "--stdin"],
+                                    input=b"First\nSecond\n", cwd=self.workspace,
+                                    capture_output=True, check=True).stdout.decode().strip()
+        self.assertEqual(article.run(["git", "hash-object", "--path=notes.md", text],
+                                     cwd=self.workspace).strip(), normalized)
+        image = self.workspace / "images/figure-01.png"
+        self.assertEqual(article.run(["git", "hash-object", "--path=images/figure-01.png", image],
+                                     cwd=self.workspace),
+                         article.run(["git", "hash-object", image], cwd=self.workspace))
+
+    def test_git_files_preserve_edits_and_recreate_missing_file(self):
+        ignore = self.workspace / ".gitignore"
+        edited = ignore.read_bytes() + b"/local-notes.txt\n"
+        ignore.write_bytes(edited)
+        attributes = self.workspace / ".gitattributes"
+        attributes.unlink()
+        article.create_git_files(self.workspace)
+        self.assertEqual(ignore.read_bytes(), edited)
+        self.assertTrue(attributes.exists())
+        attributes.write_bytes(b"*.txt text eol=lf\n")
+        article.create_git_files(self.workspace)
+        self.assertEqual(attributes.read_bytes(), b"*.txt text eol=lf\n")
+
     def test_changed_source_is_rejected(self):
         with (self.workspace / "source.pdf").open("ab") as stream:
             stream.write(b"\n% Changed\n")

@@ -26,6 +26,8 @@ The result contains:
 
 ```text
 example/
+  .gitignore              Ignore source.pdf, article.pdf, and article.ru.pdf
+  .gitattributes          Normalize text files to LF
   source.pdf              Copy of input; never edited
   article.md              Reconstructed original article
   article.ru.md           Russian translation
@@ -44,6 +46,13 @@ example/
 The script creates extraction evidence, figures, and the journal. The agent
 writes the two article Markdown files after comparing the PDF with that
 evidence. It cannot guarantee flawless OCR, transcription, or translation.
+
+`prepare` creates `.gitignore` with the three root-level PDF paths and
+`.gitattributes` with `* text=auto eol=lf`. Git detects text automatically
+and uses LF line endings while leaving binary content unchanged. The `readme`
+and `build` commands also create missing files in older workspaces. Existing
+Git configuration files are preserved without modification. No Git repository
+is initialized by the script.
 
 For corrections, refer to stable IDs and edges in natural language:
 
