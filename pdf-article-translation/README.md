@@ -29,12 +29,14 @@ example/
   source.pdf              Copy of input; never edited
   article.md              Reconstructed original article
   article.ru.md           Russian translation
+  README.md               Article title and PDF compilation instructions
+  README.ru.md            Russian article title and compilation instructions
   images/figure-01.png    Shared figure files
   figures.json            Coordinates and revision history
   image-extraction.md     Commands and figure previews
   raw/                    Extracted text and OCR evidence
   pages/                  Full-page images for visual review
-  header.tex              Default preamble created on build if absent
+  header.tex              Default preamble created by readme/build if absent
   article.pdf             Built when requested
   article.ru.pdf          Built when requested
 ```
@@ -78,6 +80,20 @@ From the repository root, build both Markdown files with:
 ```bash
 python3 pdf-article-translation/scripts/article.py build /path/to/example
 ```
+
+The build also creates workspace `README.md` and `README.ru.md` with English
+and Russian instructions. Each contains the H1 title from the corresponding
+article, build dependencies, and direct Pandoc commands for both PDFs.
+Each existing README is preserved independently. To generate instructions without
+compiling PDFs, use:
+
+```bash
+python3 pdf-article-translation/scripts/article.py readme /path/to/example
+```
+
+This also creates the default `header.tex` if needed. Both commands accept
+`--header` for an external preamble. If you later change the header or title,
+update the existing README to match.
 
 If the workspace has no `header.tex`, the script creates it from the built-in
 template. Existing headers are used unchanged, so local formatting edits

@@ -67,6 +67,15 @@ registered crops, heading levels, image order, table counts, and math equality
 using Pandoc. Separately verify completeness, translation accuracy, table
 contents, and references against the PDF; structural checks cannot prove these.
 
+Then run `python3 "$tool" readme output-directory` to create `README.md`
+and `README.ru.md` with English and Russian build instructions respectively.
+Each uses the H1 title from its corresponding article Markdown and includes
+direct Pandoc/pdflatex commands for both PDFs.
+This also creates the default `header.tex` if absent, so the instructions
+work without the skill installed. For a custom header, add `--header PATH`.
+Existing README files are preserved; inspect them for accurate instructions
+when changing the header or article title.
+
 ## Correct figure edges
 
 Map user feedback to a figure ID. Inspect its original page and current crop,
@@ -103,6 +112,7 @@ Build only when requested. This checks both Markdown files and compiles
 relative to the workspace; relative dependencies inside the header must also
 resolve there. Existing generated PDFs are replaced only after each successful
 build. Inspect both PDFs for figures, math, missing text, and Cyrillic.
+The build command also creates each missing README.md and README.ru.md.
 
 Report output paths, checks actually passed, and unresolved transcription,
 translation, and crop issues. Do not claim fidelity based on exit codes alone.

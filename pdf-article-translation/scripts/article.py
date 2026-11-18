@@ -207,8 +207,7 @@ def check(root, data):
     print("Completeness and translation accuracy require a separate visual review.")
 
 
-def build(root, data, header=None):
-    check(root, data)
+def resolve_header(root, header=None):
     if header is None:
         header = root / "header.tex"
         try:
@@ -217,7 +216,49 @@ def build(root, data, header=None):
             print(f"Created {header}")
         except FileExistsError:
             pass  # Preserve local edits and use the existing header.
-    header = header.resolve(strict=True)
+    return header.resolve(strict=True)
+
+
+def write_readme(root, header=None):
+    pending = []
+    for name, source, instructions in (
+        ("README.md", "article.md",
+         "## Build PDFs\n\n"
+         "Requires Pandoc, pdflatex, and the LaTeX packages used by the header,\n"
+         "including Cyrillic support. Run from this directory:\n\n"),
+        ("README.ru.md", "article.ru.md",
+         "## \u0421\u0431\u043e\u0440\u043a\u0430 PDF\n\n"
+         "\u041d\u0443\u0436\u043d\u044b Pandoc, pdflatex \u0438 \u043f\u0430\u043a\u0435\u0442\u044b LaTeX \u0438\u0437 \u0437\u0430\u0433\u043e\u043b\u043e\u0432\u043e\u0447\u043d\u043e\u0433\u043e \u0444\u0430\u0439\u043b\u0430,\n\u0432\u043a\u043b\u044e\u0447\u0430\u044f \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0443 \u043a\u0438\u0440\u0438\u043b\u043b\u0438\u0446\u044b. \u0412\u044b\u043f\u043e\u043b\u043d\u0438\u0442\u0435 \u0438\u0437 \u044d\u0442\u043e\u0439 \u0434\u0438\u0440\u0435\u043a\u0442\u043e\u0440\u0438\u0438:\n\n"),
+    ):
+        target = root / name
+        if target.exists():
+            print(f"Preserved {target}")
+            continue
+        text = (root / source).read_text(encoding="utf-8")
+        title = re.search(r"^#[ \t]+([^\n]+)$", text, re.MULTILINE)
+        if not title:
+            raise ValueError(f"{source}: expected an H1 article title for {name}")
+        pending.append((target, title[1], instructions))
+    if not pending:
+        return
+    header = resolve_header(root, header)
+    if header.is_relative_to(root):
+        header = header.relative_to(root)
+    commands = [shlex.join(["pandoc", f"{name}.md", "--pdf-engine=pdflatex",
+                            "-H", str(header), "-o", f"{name}.pdf"])
+                for name in ("article", "article.ru")]
+    for target, title, instructions in pending:
+        content = (f"# {title}\n\n" + instructions
+                   + "```bash\n" + "\n".join(commands) + "\n```\n")
+        with target.open("x", encoding="utf-8") as stream:
+            stream.write(content)
+        print(f"Created {target}")
+
+
+def build(root, data, header=None):
+    check(root, data)
+    header = resolve_header(root, header)
+    write_readme(root, header)
     for filename in ("article", "article.ru"):
         with tempfile.TemporaryDirectory(dir=root) as temporary:
             output = Path(temporary) / f"{filename}.pdf"
@@ -242,6 +283,7 @@ def main():
                             ("figure", "Extract or replace a figure rectangle"),
                             ("adjust", "Expand (+) or contract (-) figure edges"),
                             ("check", "Compare Markdown structure and figure links"),
+                            ("readme", "Create English and Russian READMEs with PDF build commands"),
                             ("build", "Build both PDFs with pdflatex")):
         command = commands.add_parser(name, help=help_text)
         command.add_argument("workspace", type=Path)
@@ -258,7 +300,7 @@ def main():
         if name == "adjust":
             for edge in ("left", "top", "right", "bottom"):
                 command.add_argument(f"--{edge}", type=int, default=0)
-        if name == "build":
+        if name in ("build", "readme"):
             command.add_argument("--header", type=Path,
                                  help="Custom preamble; default: workspace/header.tex "
                                       "(created from the built-in template if absent)")
@@ -293,6 +335,8 @@ def main():
             extract_figure(root, data, args.id, figure["page"], box, args.note)
         elif args.command == "check":
             check(root, data)
+        elif args.command == "readme":
+            write_readme(root, args.header)
         elif args.command == "build":
             build(root, data, args.header)
     except (OSError, ValueError, KeyError, TypeError) as error:

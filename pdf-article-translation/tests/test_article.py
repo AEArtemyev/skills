@@ -3,6 +3,7 @@
 import importlib.util
 from pathlib import Path
 import shutil
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -127,11 +128,20 @@ class ArticleTest(unittest.TestCase):
             self.assertTrue((self.workspace / filename).read_bytes().startswith(b"%PDF-"))
         extracted = article.run(["pdftotext", self.workspace / "article.ru.pdf", "-"])
         self.assertIn("\u041f\u0440\u0438\u0432\u0435\u0442", extracted)
+        readme = self.workspace / "README.md"
+        instructions = readme.read_text(encoding="utf-8")
+        self.assertTrue(instructions.startswith("# Article\n"))
+        # Published commands must work directly, without the skill script.
+        for line in instructions.splitlines():
+            if line.startswith("pandoc "):
+                article.run(shlex.split(line), cwd=self.workspace)
+        readme.write_text(instructions + "\nLocal notes.\n", encoding="utf-8")
 
         edited = header.read_text() + "\n% User formatting change\n"
         header.write_text(edited, encoding="utf-8")
         self.call("build", self.workspace)
         self.assertEqual(header.read_text(), edited)
+        self.assertEqual(readme.read_text(), instructions + "\nLocal notes.\n")
 
         # An explicit header takes precedence even if the local one is invalid.
         custom = self.workspace.parent / "custom header.tex"
@@ -140,6 +150,38 @@ class ArticleTest(unittest.TestCase):
         self.call("build", self.workspace, "--header", custom)
         self.assertEqual(header.read_text(), "\\undefinedLocalCommand\n")
         self.assertEqual(custom.read_text(), edited)
+
+    def test_readme_without_build_and_custom_header(self):
+        (self.workspace / "article.md").write_text("# An article about C#\n\nText.\n")
+        russian_title = "\u0421\u0442\u0430\u0442\u044c\u044f \u043e C#"
+        (self.workspace / "article.ru.md").write_text(
+            f"# {russian_title}\n\nText.\n", encoding="utf-8")
+        custom = self.workspace.parent / "custom header.tex"
+        custom.write_text(article.DEFAULT_HEADER)
+        self.call("readme", self.workspace, "--header", custom)
+        self.assertFalse((self.workspace / "header.tex").exists())
+        self.assertFalse((self.workspace / "article.pdf").exists())
+        content = (self.workspace / "README.md").read_text()
+        self.assertTrue(content.startswith("# An article about C#\n"))
+        commands = [shlex.split(line) for line in content.splitlines()
+                    if line.startswith("pandoc ")]
+        self.assertEqual(len(commands), 2)
+        for command in commands:
+            self.assertEqual(command[command.index("-H") + 1], str(custom))
+        russian_readme = self.workspace / "README.ru.md"
+        russian = russian_readme.read_text(encoding="utf-8")
+        self.assertTrue(russian.startswith(f"# {russian_title}\n"))
+        self.assertIn("\u0421\u0431\u043e\u0440\u043a\u0430 PDF", russian)
+        self.assertEqual(commands, [shlex.split(line) for line in russian.splitlines()
+                                    if line.startswith("pandoc ")])
+        russian_readme.write_text(russian + "Local notes.\n", encoding="utf-8")
+        self.call("readme", self.workspace, "--header", custom)
+        self.assertEqual(russian_readme.read_text(encoding="utf-8"), russian + "Local notes.\n")
+        # A preexisting English README must not prevent Russian generation.
+        russian_readme.unlink()
+        self.call("readme", self.workspace, "--header", custom)
+        self.assertEqual(russian_readme.read_text(encoding="utf-8"), russian)
+        self.assertEqual((self.workspace / "README.md").read_text(), content)
 
 
 if __name__ == "__main__":
