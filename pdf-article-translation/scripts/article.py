@@ -75,6 +75,15 @@ def crop_command(data, name, figure):
                          f"images/{name}"]))
 
 
+def embedded_commands(name, page, index):
+    prefix = f"raw/embedded/page-{page:04d}/image"
+    return [
+        ["mkdir", "-p", str(Path(prefix).parent)],
+        ["pdfimages", "-f", str(page), "-l", str(page), "-png", "source.pdf", prefix],
+        ["cp", f"{prefix}-{index:03d}.png", f"images/{name}.png"],
+    ]
+
+
 def save(root, data):
     target = root / "figures.json"
     temporary = target.with_suffix(".json.tmp")
@@ -86,11 +95,19 @@ def save(root, data):
              f"Resolution: {data['dpi']} DPI. Page numbering starts at 1.",
              f"Source SHA-256: {data['sha256']}", ""]
     for name, figure in sorted(data["figures"].items()):
-        lines += [f"## {name}", "", f"Page: {figure['page']}; box: {figure['box']}",
-                  "", "```bash", shlex.join(crop_command(data, name, figure)),
+        if figure.get("method") == "embedded":
+            details = f"embedded index: {figure['index']} (page-local, starting at 0)"
+            commands = embedded_commands(name, figure["page"], figure["index"])
+        else:
+            details = f"page crop: {figure['box']}"
+            commands = [crop_command(data, name, figure)]
+        lines += [f"## {name}", "", f"Page: {figure['page']}; {details}",
+                  "", "```bash", *(shlex.join(command) for command in commands),
                   "```", "", f"![{name}](images/{name}.png)", "", "History:", ""]
         for event in figure["history"]:
-            lines.append(f"- {event['time']}: page {event['page']}, {event['box']}; "
+            details = (f"embedded index {event['index']}" if event.get("method") == "embedded"
+                       else f"page crop {event['box']}")
+            lines.append(f"- {event['time']}: page {event['page']}, {details}; "
                          f"{json.dumps(event['note'], ensure_ascii=True)}")
         lines.append("")
     (root / "image-extraction.md").write_text("\n".join(lines), encoding="utf-8")
@@ -145,6 +162,8 @@ def prepare(args):
     for mode in ("layout", "raw"):
         run(["pdftotext", f"-{mode}", "-enc", "UTF-8", "source.pdf",
              f"raw/{mode}.txt"], cwd=root)
+    images = run(["pdfimages", "-list", "source.pdf"], cwd=root)
+    (root / "raw/pdfimages.txt").write_text(images, encoding="utf-8")
     print(root)
     print("Raw text extracted. Compare with page images before reconstruction.")
     if not (root / "raw/layout.txt").read_text(encoding="utf-8").strip():
@@ -158,7 +177,7 @@ def extract_figure(root, data, name, page, box, note):
     x, y, w, h = box
     if x < 0 or y < 0 or w <= 0 or h <= 0 or x + w > width or y + h > height:
         raise ValueError(f"Box {box} lies outside page size {width} x {height}")
-    figure = {"page": page, "box": box}
+    figure = {"method": "crop", "page": page, "box": box}
     command = crop_command(data, name, figure)
     # A failed render leaves the previous image intact.
     with tempfile.TemporaryDirectory(dir=root / "images") as temporary:
@@ -168,12 +187,36 @@ def extract_figure(root, data, name, page, box, note):
         if png_size(generated) != (w, h):
             raise ValueError("Rendered crop size differs from requested box")
         generated.replace(root / "images" / f"{name}.png")
-    figure["history"] = data["figures"].get(name, {}).get("history", []) + [
-        {"time": datetime.now(timezone.utc).isoformat(), "page": page,
-         "box": box, "note": note}]
+    record_figure(root, data, name, figure, note)
+
+
+def record_figure(root, data, name, figure, note):
+    event = {**figure, "time": datetime.now(timezone.utc).isoformat(), "note": note}
+    figure["history"] = data["figures"].get(name, {}).get("history", []) + [event]
     data["figures"][name] = figure
     save(root, data)
     print(root / "images" / f"{name}.png")
+
+
+def extract_embedded(root, data, name, page, index, note):
+    if not re.fullmatch(r"figure-[0-9]{2,}", name):
+        raise ValueError("Use a stable ID such as figure-01")
+    if not 1 <= page <= data["page_count"] or index < 0:
+        raise ValueError("Use a valid page and a nonnegative page-local image index")
+    commands = embedded_commands(name, page, index)
+    (root / commands[0][-1]).mkdir(parents=True, exist_ok=True)
+    run(commands[1], cwd=root)
+    source = root / commands[2][1]
+    if not source.is_file():
+        raise ValueError(f"No embedded PNG at page {page}, index {index}; inspect raw/embedded")
+    png_size(source)
+    with tempfile.TemporaryDirectory(dir=root / "images") as temporary:
+        target = Path(temporary) / f"{name}.png"
+        shutil.copyfile(source, target)
+        target.replace(root / "images" / f"{name}.png")
+    record_figure(root, data, name,
+                  {"method": "embedded", "page": page, "index": index}, note)
+    print("Compare this object with the rendered PDF figure before using it.")
 
 
 def walk(value):
@@ -235,39 +278,26 @@ def resolve_header(root, header=None):
 
 def write_readme(root, header=None):
     create_git_files(root)
-    pending = []
-    for name, source, instructions in (
-        ("README.md", "article.md",
-         "## Build PDFs\n\n"
-         "Requires Pandoc, pdflatex, and the LaTeX packages used by the header,\n"
-         "including Cyrillic support. Run from this directory:\n\n"),
-        ("README.ru.md", "article.ru.md",
-         "## \u0421\u0431\u043e\u0440\u043a\u0430 PDF\n\n"
-         "\u041d\u0443\u0436\u043d\u044b Pandoc, pdflatex \u0438 \u043f\u0430\u043a\u0435\u0442\u044b LaTeX \u0438\u0437 \u0437\u0430\u0433\u043e\u043b\u043e\u0432\u043e\u0447\u043d\u043e\u0433\u043e \u0444\u0430\u0439\u043b\u0430,\n\u0432\u043a\u043b\u044e\u0447\u0430\u044f \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0443 \u043a\u0438\u0440\u0438\u043b\u043b\u0438\u0446\u044b. \u0412\u044b\u043f\u043e\u043b\u043d\u0438\u0442\u0435 \u0438\u0437 \u044d\u0442\u043e\u0439 \u0434\u0438\u0440\u0435\u043a\u0442\u043e\u0440\u0438\u0438:\n\n"),
-    ):
-        target = root / name
-        if target.exists():
-            print(f"Preserved {target}")
-            continue
-        text = (root / source).read_text(encoding="utf-8")
-        title = re.search(r"^#[ \t]+([^\n]+)$", text, re.MULTILINE)
-        if not title:
-            raise ValueError(f"{source}: expected an H1 article title for {name}")
-        pending.append((target, title[1], instructions))
-    if not pending:
+    target = root / "README.md"
+    if target.exists():
+        print(f"Preserved {target}")
         return
+    text = (root / "article.md").read_text(encoding="utf-8")
+    title = re.search(r"^#[ \t]+([^\n]+)$", text, re.MULTILINE)
+    if not title:
+        raise ValueError("article.md: expected an English H1 article title for README.md")
     header = resolve_header(root, header)
     if header.is_relative_to(root):
         header = header.relative_to(root)
     commands = [shlex.join(["pandoc", f"{name}.md", "--pdf-engine=pdflatex",
                             "-H", str(header), "-o", f"{name}.pdf"])
                 for name in ("article", "article.ru")]
-    for target, title, instructions in pending:
-        content = (f"# {title}\n\n" + instructions
-                   + "```bash\n" + "\n".join(commands) + "\n```\n")
-        with target.open("x", encoding="utf-8") as stream:
-            stream.write(content)
-        print(f"Created {target}")
+    template = Path(__file__).resolve().parents[1] / "assets/README.md.template"
+    content = template.read_text(encoding="utf-8").format(
+        title=title[1], commands="\n".join(commands))
+    with target.open("x", encoding="utf-8") as stream:
+        stream.write(content)
+    print(f"Created {target}")
 
 
 def build(root, data, header=None):
@@ -296,22 +326,26 @@ def main():
     for name, help_text in (("page", "Render a full page"),
                             ("ocr", "OCR selected or all pages"),
                             ("figure", "Extract or replace a figure rectangle"),
+                            ("embedded", "Extract an embedded image candidate using pdfimages"),
                             ("adjust", "Expand (+) or contract (-) figure edges"),
                             ("check", "Compare Markdown structure and figure links"),
-                            ("readme", "Create English and Russian READMEs with PDF build commands"),
+                            ("readme", "Create Russian README.md with PDF installation and build commands"),
                             ("build", "Build both PDFs with pdflatex")):
         command = commands.add_parser(name, help=help_text)
         command.add_argument("workspace", type=Path)
-        if name in ("page", "ocr", "figure"):
+        if name in ("page", "ocr", "figure", "embedded"):
             command.add_argument("--page", type=int, required=name != "ocr")
         if name == "ocr":
             command.add_argument("--lang", required=True, help="Tesseract language, e.g. eng")
-        if name in ("figure", "adjust"):
+        if name in ("figure", "adjust", "embedded"):
             command.add_argument("--id", required=True)
             command.add_argument("--note", required=True)
         if name == "figure":
             command.add_argument("--box", type=int, nargs=4, required=True,
                                  metavar=("X", "Y", "WIDTH", "HEIGHT"))
+        if name == "embedded":
+            command.add_argument("--index", type=int, required=True,
+                                 help="Image index within the selected page, starting at 0")
         if name == "adjust":
             for edge in ("left", "top", "right", "bottom"):
                 command.add_argument(f"--{edge}", type=int, default=0)
@@ -338,10 +372,15 @@ def main():
                 print(target)
         elif args.command == "figure":
             extract_figure(root, data, args.id, args.page, args.box, args.note)
+        elif args.command == "embedded":
+            extract_embedded(root, data, args.id, args.page, args.index, args.note)
         elif args.command == "adjust":
             figure = data["figures"].get(args.id)
             if figure is None:
                 raise ValueError(f"Unknown figure: {args.id}")
+            if figure.get("method") == "embedded":
+                raise ValueError("Embedded image has no page crop; use figure with the same ID, "
+                                 "--page and --box to switch to a page crop")
             if not any((args.left, args.top, args.right, args.bottom)):
                 raise ValueError("Specify a nonzero edge adjustment")
             x, y, w, h = figure["box"]

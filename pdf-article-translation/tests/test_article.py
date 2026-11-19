@@ -16,15 +16,20 @@ spec.loader.exec_module(article)
 
 
 def make_pdf(path):
-    # A minimal, searchable one-page PDF with a vector rectangle.
+    # A searchable page containing a vector rectangle and an embedded RGB image.
     content = b"0 0 0 rg 30 40 50 60 re f\nBT /F1 12 Tf 10 120 Td (Test article) Tj ET\n"
+    content += b"q 20 0 0 20 100 10 cm /Im1 Do Q\n"
+    pixels = bytes([255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255])
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 144 144] "
-        b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        b"/Resources << /Font << /F1 4 0 R >> /XObject << /Im1 6 0 R >> >> /Contents 5 0 R >>",
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
         b"<< /Length " + str(len(content)).encode() + b" >>\nstream\n" + content + b"endstream",
+        b"<< /Type /XObject /Subtype /Image /Width 2 /Height 2 "
+        b"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Length 12 >>\nstream\n"
+        + pixels + b"\nendstream",
     ]
     data = bytearray(b"%PDF-1.4\n")
     offsets = [0]
@@ -41,7 +46,7 @@ def make_pdf(path):
 
 
 @unittest.skipUnless(all(shutil.which(tool) for tool in
-                         ("pdftoppm", "pdftotext", "pdfinfo", "pandoc")),
+                         ("pdftoppm", "pdftotext", "pdfinfo", "pdfimages", "pandoc")),
                      "Poppler and Pandoc are required")
 class ArticleTest(unittest.TestCase):
     def setUp(self):
@@ -188,9 +193,6 @@ class ArticleTest(unittest.TestCase):
 
     def test_readme_without_build_and_custom_header(self):
         (self.workspace / "article.md").write_text("# An article about C#\n\nText.\n")
-        russian_title = "\u0421\u0442\u0430\u0442\u044c\u044f \u043e C#"
-        (self.workspace / "article.ru.md").write_text(
-            f"# {russian_title}\n\nText.\n", encoding="utf-8")
         custom = self.workspace.parent / "custom header.tex"
         custom.write_text(article.DEFAULT_HEADER)
         self.call("readme", self.workspace, "--header", custom)
@@ -203,20 +205,44 @@ class ArticleTest(unittest.TestCase):
         self.assertEqual(len(commands), 2)
         for command in commands:
             self.assertEqual(command[command.index("-H") + 1], str(custom))
-        russian_readme = self.workspace / "README.ru.md"
-        russian = russian_readme.read_text(encoding="utf-8")
-        self.assertTrue(russian.startswith(f"# {russian_title}\n"))
-        self.assertIn("\u0421\u0431\u043e\u0440\u043a\u0430 PDF", russian)
-        self.assertEqual(commands, [shlex.split(line) for line in russian.splitlines()
-                                    if line.startswith("pandoc ")])
-        russian_readme.write_text(russian + "Local notes.\n", encoding="utf-8")
+        self.assertFalse((self.workspace / "README.ru.md").exists())
+        self.assertIn("\u0421\u0431\u043e\u0440\u043a\u0430 PDF", content)
+        install = next(shlex.split(line) for line in content.splitlines()
+                       if line.startswith("sudo apt install "))
+        self.assertTrue({"pandoc", "texlive-latex-extra", "texlive-lang-cyrillic"}
+                        .issubset(install))
+        (self.workspace / "README.md").write_text(content + "Local notes.\n", encoding="utf-8")
         self.call("readme", self.workspace, "--header", custom)
-        self.assertEqual(russian_readme.read_text(encoding="utf-8"), russian + "Local notes.\n")
-        # A preexisting English README must not prevent Russian generation.
-        russian_readme.unlink()
-        self.call("readme", self.workspace, "--header", custom)
-        self.assertEqual(russian_readme.read_text(encoding="utf-8"), russian)
-        self.assertEqual((self.workspace / "README.md").read_text(), content)
+        self.assertEqual((self.workspace / "README.md").read_text(), content + "Local notes.\n")
+
+    def test_embedded_extraction_replay_and_page_crop_fallback(self):
+        self.call("embedded", self.workspace, "--id", "figure-02", "--page", 1,
+                  "--index", 0, "--note", "Embedded candidate")
+        image = self.workspace / "images/figure-02.png"
+        self.assertEqual(article.png_size(image), (2, 2))
+        original = image.read_bytes()
+        journal = (self.workspace / "image-extraction.md").read_text()
+        section = journal.split("## figure-02\n", 1)[1]
+        commands = section.split("```bash\n", 1)[1].split("```", 1)[0]
+        image.unlink()
+        for command in commands.strip().splitlines():
+            article.run(shlex.split(command), cwd=self.workspace)
+        self.assertEqual(image.read_bytes(), original)
+        result = self.call("adjust", self.workspace, "--id", "figure-02", "--left", 1,
+                           "--note", "Needs page crop", success=False)
+        self.assertIn("page crop", result.stderr)
+        self.assertEqual(image.read_bytes(), original)
+        self.call("embedded", self.workspace, "--id", "figure-02", "--page", 1,
+                  "--index", 99, "--note", "Missing object", success=False)
+        self.assertEqual(image.read_bytes(), original)
+        self.call("figure", self.workspace, "--id", "figure-02", "--page", 1,
+                  "--box", 95, 109, 30, 30, "--note", "Use full-page rendering")
+        self.assertEqual(article.png_size(image), (30, 30))
+        self.call("adjust", self.workspace, "--id", "figure-02", "--left", 2,
+                  "--note", "Expand page crop")
+        self.assertEqual(article.png_size(image), (32, 30))
+        history = article.load(self.workspace)["figures"]["figure-02"]["history"]
+        self.assertEqual(len(history), 3)
 
 
 if __name__ == "__main__":

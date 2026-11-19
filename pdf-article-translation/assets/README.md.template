@@ -1,0 +1,20 @@
+# {title}
+
+## Зависимости для сборки PDF
+
+Нужны Pandoc, LaTeX с движком `pdflatex`, поддержка кириллицы и пакеты из `header.tex`.
+
+В Ubuntu/Debian:
+
+```bash
+sudo apt update
+sudo apt install pandoc texlive-latex-base texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended texlive-lang-cyrillic
+```
+
+## Сборка PDF
+
+Выполните из этой директории:
+
+```bash
+{commands}
+```

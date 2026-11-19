@@ -2,6 +2,7 @@
 
 Convert PDF articles to Markdown with figures and a Russian translation.
 Build PDFs using Pandoc and pdflatex.
+Both PDFs are built by default; request Markdown only to skip compilation.
 
 See the [repository README](../README.md) for installation and
 [SKILL.md](SKILL.md) for agent instructions.
@@ -21,16 +22,15 @@ The result contains:
 source.pdf              Copy of input; never edited
 article.md              Reconstructed original article
 article.ru.md           Russian translation
-README.md               Article title and PDF compilation instructions
-README.ru.md            Russian article title and compilation instructions
+README.md               Russian instructions with the English article title
 images/figure-01.png    Shared figure files
-figures.json            Coordinates and revision history
+figures.json            Extraction methods, parameters, and revision history
 image-extraction.md     Commands and figure previews
 raw/                    Extracted text and OCR evidence
 pages/                  Full-page images for visual review
 header.tex              Default preamble created by readme/build if absent
-article.pdf             Built when requested
-article.ru.pdf          Built when requested
+article.pdf             Compiled original article
+article.ru.pdf          Compiled Russian translation
 ```
 
 To correct a figure, describe the affected edge:
@@ -38,6 +38,11 @@ To correct a figure, describe the affected edge:
 ```text
 Figure-03 is clipped on the left. Figure-07 has excess space below it.
 ```
+
+The source PDF is copied to `source.pdf` in a new output directory. If no
+output path is given, the skill uses `<input-stem>-translation` beside the input.
+Figures can be extracted with `pdfimages` or cropped from a page; the agent
+must visually compare each result with the PDF before accepting it.
 
 ## Dependencies
 
@@ -57,7 +62,8 @@ This creates `article.pdf` and `article.ru.pdf`. A default `header.tex` is
 created if absent; existing headers are preserved. To use another header,
 add `--header /path/to/header.tex`.
 
-The output directory's READMEs also contain direct Pandoc build commands.
+The output directory's Russian README contains Ubuntu/Debian dependency
+installation commands and direct Pandoc build commands.
 
 ## Tests
 
