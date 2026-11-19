@@ -22,7 +22,7 @@ The result contains:
 source.pdf              Copy of input; never edited
 article.md              Reconstructed original article
 article.ru.md           Russian translation
-README.md               Russian instructions with the English article title
+README.md               Russian file inventory and build instructions; English title
 images/figure-01.png    Shared figure files
 figures.json            Extraction methods, parameters, and revision history
 image-extraction.md     Commands and figure previews
@@ -43,6 +43,8 @@ The source PDF is copied to `source.pdf` in a new output directory. If no
 output path is given, the skill uses `<input-stem>-translation` beside the input.
 Figures can be extracted with `pdfimages` or cropped from a page; the agent
 must visually compare each result with the PDF before accepting it.
+English Markdown uses ASCII only. Russian Markdown allows ASCII and Russian
+letters, including Yo. Math symbols use LaTeX commands.
 
 ## Dependencies
 

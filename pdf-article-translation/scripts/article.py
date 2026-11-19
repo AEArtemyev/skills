@@ -250,7 +250,26 @@ def structure(root, filename):
     }
 
 
+def validate_characters(text, filename, russian=False):
+    for line_number, line in enumerate(text.split("\n"), 1):
+        for column, character in enumerate(line, 1):
+            code = ord(character)
+            if code <= 0x7F:
+                continue
+            if russian and (0x0410 <= code <= 0x044F or code in (0x0401, 0x0451)):
+                continue
+            allowed = "ASCII and Russian letters" if russian else "ASCII"
+            raise ValueError(f"{filename}:{line_number}:{column}: "
+                             f"U+{code:04X} {character!r} is not allowed; use {allowed}")
+
+
 def check(root, data):
+    for filename, russian in (("article.md", False), ("article.ru.md", True),
+                              ("README.md", True)):
+        path = root / filename
+        if filename == "README.md" and not path.exists():
+            continue
+        validate_characters(path.read_text(encoding="utf-8"), filename, russian)
     source = structure(root, "article.md")
     translated = structure(root, "article.ru.md")
     for key in source:
@@ -286,6 +305,7 @@ def write_readme(root, header=None):
     title = re.search(r"^#[ \t]+([^\n]+)$", text, re.MULTILINE)
     if not title:
         raise ValueError("article.md: expected an English H1 article title for README.md")
+    validate_characters(title[1], "README.md title")
     header = resolve_header(root, header)
     if header.is_relative_to(root):
         header = header.relative_to(root)
@@ -295,6 +315,7 @@ def write_readme(root, header=None):
     template = Path(__file__).resolve().parents[1] / "assets/README.md.template"
     content = template.read_text(encoding="utf-8").format(
         title=title[1], commands="\n".join(commands))
+    validate_characters(content, "README.md", russian=True)
     with target.open("x", encoding="utf-8") as stream:
         stream.write(content)
     print(f"Created {target}")

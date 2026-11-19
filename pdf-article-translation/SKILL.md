@@ -85,17 +85,31 @@ from the source; preserve drawing content rather than painting over it.
 Create `article.ru.md` from the complete original Markdown. Translate title,
 headings, prose, and captions. Keep terminology consistent. Preserve author
 names, references, identifiers, URLs, equations, and image paths. Translate
-bibliographic entries only when asked. Write the translation in UTF-8 Russian;
-ASCII-only repository rules apply to skill sources, not these output artifacts.
+bibliographic entries only when asked, subject to the character rules below.
+
+## Character rules
+
+Write `article.md` using only ASCII characters (U+0000 through U+007F).
+In `article.ru.md` and the generated Russian README, allow only ASCII plus
+the Russian letters U+0410 through U+044F, U+0401, and U+0451 (including Yo).
+This excludes Greek letters, other Cyrillic alphabets, typographic punctuation,
+nonbreaking spaces, and accented Latin characters as literal Unicode.
+
+Use ASCII LaTeX commands for mathematical symbols and accented names,
+straight quotes, ordinary spaces, and `--` for a long dash. Preserve meaning
+when changing representation. Keep formulas identical in both articles.
+These rules apply to final Markdown, not raw extraction or OCR evidence.
 
 Run `python3 "$tool" check output-directory`. It checks local images,
 registered crops, heading levels, image order, table counts, and math equality
-using Pandoc. Separately verify completeness, translation accuracy, table
+using Pandoc. It rejects disallowed characters with their file, line, column,
+and Unicode code point. Separately verify completeness, translation accuracy, table
 contents, and references against the PDF; structural checks cannot prove these.
 
 Continue with the PDF build below. It creates one Russian `README.md` with
 the original article's English H1 title, Ubuntu/Debian dependency installation
-commands, and direct Pandoc commands for both PDFs. If the source title is
+commands, a file inventory with Russian descriptions, and direct Pandoc commands
+for both PDFs. If the source title is
 not English, translate only the README heading into English. No separate
 README.ru.md is generated. On an existing workspace, update old README
 instructions to this format while preserving user notes.

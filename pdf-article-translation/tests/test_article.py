@@ -153,6 +153,27 @@ class ArticleTest(unittest.TestCase):
         target.write_text("")
         self.assertIn("article is empty", self.call("check", self.workspace, success=False).stderr)
 
+    def test_article_character_limits(self):
+        english = "# Article\n\nText $\\alpha$.\n\n![Diagram](images/figure-01.png)\n"
+        russian_letters = "".join(map(chr, range(0x0410, 0x0450))) + "\u0401\u0451"
+        translated = english.replace("Text", russian_letters)
+        source = self.workspace / "article.md"
+        target = self.workspace / "article.ru.md"
+        source.write_text(english, encoding="utf-8")
+        target.write_text(translated, encoding="utf-8")
+        self.call("check", self.workspace)
+        source.write_text(english.replace("Text", "Text \u00e9"), encoding="utf-8")
+        result = self.call("check", self.workspace, success=False)
+        self.assertIn("article.md:3:6:", result.stderr)
+        self.assertIn("U+00E9", result.stderr)
+        source.write_text(english, encoding="utf-8")
+        for character in ("\u0456", "\u03b1", "\u2014", "\u00a0"):
+            with self.subTest(character=character):
+                target.write_text(translated.replace(russian_letters, character), encoding="utf-8")
+                result = self.call("check", self.workspace, success=False)
+                self.assertIn("article.ru.md:3:1:", result.stderr)
+                self.assertIn(f"U+{ord(character):04X}", result.stderr)
+
     @unittest.skipUnless(shutil.which("pdflatex"), "pdflatex is required")
     def test_build_default_header_and_preserve_local_edits(self):
         for filename, title in (("article.md", "Article"),
@@ -207,6 +228,15 @@ class ArticleTest(unittest.TestCase):
             self.assertEqual(command[command.index("-H") + 1], str(custom))
         self.assertFalse((self.workspace / "README.ru.md").exists())
         self.assertIn("\u0421\u0431\u043e\u0440\u043a\u0430 PDF", content)
+        inventory = content.split("```text\n", 1)[1].split("```", 1)[0]
+        rows = [line.split(maxsplit=1) for line in inventory.strip().splitlines()]
+        self.assertEqual({row[0] for row in rows}, {
+            ".gitignore", ".gitattributes", "source.pdf", "article.md", "article.ru.md",
+            "README.md", "images/figure-01.png", "figures.json", "image-extraction.md",
+            "raw/", "pages/", "header.tex", "article.pdf", "article.ru.pdf",
+        })
+        for filename, description in rows:
+            self.assertTrue(any(0x0410 <= ord(c) <= 0x044F for c in description), filename)
         install = next(shlex.split(line) for line in content.splitlines()
                        if line.startswith("sudo apt install "))
         self.assertTrue({"pandoc", "texlive-latex-extra", "texlive-lang-cyrillic"}
