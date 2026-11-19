@@ -16,8 +16,8 @@ Invoke `$pdf-article-translation` and provide the input PDF and a new output
 directory. For example:
 
 ```text
-Use $pdf-article-translation with ~/papers/input.pdf.
-Write the original article and Russian translation to ~/translations/example.
+Use $pdf-article-translation with /path/to/input.pdf.
+Write the original article and Russian translation to /path/to/example.
 Build both PDFs using the default header.
 Record figure extraction commands and visually inspect the figures.
 ```
@@ -62,7 +62,7 @@ Correct these crops, inspect the results, and rebuild both PDFs.
 ```
 
 The agent chooses pixel adjustments using the source page. You can also give
-exact amounts. From the repository root (`~/dev/skills`), a script-only correction looks like:
+exact amounts. From the repository root, a script-only correction looks like:
 
 ```bash
 python3 pdf-article-translation/scripts/article.py adjust \
@@ -82,7 +82,7 @@ Scans additionally need Tesseract and the original language's OCR data.
 PDF builds use pdflatex and the packages required by the header, including
 Cyrillic support. The built-in preamble uses T2A/UTF-8 encodings, Russian and
 English Babel, cmap, geometry, amsmath, amssymb, mathtools, cancel, graphicx,
-grffile, and float, matching the previously supplied header's settings.
+grffile, and float.
 
 From the repository root, build both Markdown files with:
 
@@ -121,7 +121,7 @@ Pandoc builds are performed from the output directory. A header's relative
 into the workspace as appropriate. Rebuilt PDFs preserve content and logical
 structure rather than the original page layout.
 
-Run the behavior checks from the repository root (`~/dev/skills`):
+Run the behavior checks from the repository root:
 
 ```bash
 python3 -m unittest discover -s pdf-article-translation/tests -v

@@ -1,7 +1,8 @@
 # Personal skills
 
-Personal agent skills maintained in `~/dev/skills`. Each skill lives in its
-own directory with a `SKILL.md` entry point and any supporting resources.
+A collection of agent skills. Each skill lives in its own directory with a
+`SKILL.md` entry point and any supporting resources. The repository can be
+stored in any local directory.
 
 ## Available skills
 
@@ -25,16 +26,16 @@ skills/
 
 Add future skills as sibling directories. Use `scripts/`, `tests/`,
 `references/`, and `assets/` only when the skill needs them. Keep source
-articles, translations, and generated PDFs outside this repository, for
-example in `~/translations`.
+articles, translations, and generated PDFs outside this repository.
 
 ## Install in Codex
 
-Expose each selected skill with a symlink:
+Run these commands from the repository root to expose the skill with a
+symlink. The source path is derived from the current directory:
 
 ```bash
 mkdir -p ~/.codex/skills
-ln -s ~/dev/skills/pdf-article-translation \
+ln -s "$(pwd)/pdf-article-translation" \
   ~/.codex/skills/pdf-article-translation
 ```
 
