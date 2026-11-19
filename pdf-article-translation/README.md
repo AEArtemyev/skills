@@ -13,12 +13,25 @@ Use $pdf-article-translation with /path/to/input.pdf.
 Save the results to /path/to/output.
 ```
 
-Main outputs:
+The result contains:
 
-- `article.md` and `article.ru.md`: original article and Russian translation.
-- `images/`: shared figures.
-- `image-extraction.md`: extraction commands, previews, and crop history.
-- `README.md` and `README.ru.md`: article title and PDF build instructions.
+```text
+.gitignore              Ignore source.pdf, article.pdf, and article.ru.pdf
+.gitattributes          Normalize text files to LF
+source.pdf              Copy of input; never edited
+article.md              Reconstructed original article
+article.ru.md           Russian translation
+README.md               Article title and PDF compilation instructions
+README.ru.md            Russian article title and compilation instructions
+images/figure-01.png    Shared figure files
+figures.json            Coordinates and revision history
+image-extraction.md     Commands and figure previews
+raw/                    Extracted text and OCR evidence
+pages/                  Full-page images for visual review
+header.tex              Default preamble created by readme/build if absent
+article.pdf             Built when requested
+article.ru.pdf          Built when requested
+```
 
 To correct a figure, describe the affected edge:
 
