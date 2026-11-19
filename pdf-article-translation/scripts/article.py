@@ -56,7 +56,7 @@ def digest(path):
 
 def create_git_files(root):
     for name, content in (
-        (".gitignore", "/source.pdf\n/article.pdf\n/article.ru.pdf\n"),
+        (".gitignore", "*.pdf\n/raw/\n/pages/\n"),
         (".gitattributes", "* text=auto eol=lf\n"),
     ):
         try:
@@ -71,15 +71,15 @@ def crop_command(data, name, figure):
     x, y, width, height = figure["box"]
     return list(map(str, ["pdftoppm", "-f", figure["page"], "-l", figure["page"],
                          "-singlefile", "-r", data["dpi"], "-x", x, "-y", y,
-                         "-W", width, "-H", height, "-png", "source.pdf",
+                         "-W", width, "-H", height, "-png", data.get("source", "source.pdf"),
                          f"images/{name}"]))
 
 
-def embedded_commands(name, page, index):
+def embedded_commands(name, page, index, source="source.pdf"):
     prefix = f"raw/embedded/page-{page:04d}/image"
     return [
         ["mkdir", "-p", str(Path(prefix).parent)],
-        ["pdfimages", "-f", str(page), "-l", str(page), "-png", "source.pdf", prefix],
+        ["pdfimages", "-f", str(page), "-l", str(page), "-png", source, prefix],
         ["cp", f"{prefix}-{index:03d}.png", f"images/{name}.png"],
     ]
 
@@ -93,11 +93,13 @@ def save(root, data):
              "Generated from figures.json. Run commands from this workspace directory.",
              "Coordinates: x y width height, in pixels from the page top left.",
              f"Resolution: {data['dpi']} DPI. Page numbering starts at 1.",
+             f"Source file: {data.get('source', 'source.pdf')}",
              f"Source SHA-256: {data['sha256']}", ""]
     for name, figure in sorted(data["figures"].items()):
         if figure.get("method") == "embedded":
             details = f"embedded index: {figure['index']} (page-local, starting at 0)"
-            commands = embedded_commands(name, figure["page"], figure["index"])
+            commands = embedded_commands(name, figure["page"], figure["index"],
+                                         data.get("source", "source.pdf"))
         else:
             details = f"page crop: {figure['box']}"
             commands = [crop_command(data, name, figure)]
@@ -113,12 +115,14 @@ def save(root, data):
     (root / "image-extraction.md").write_text("\n".join(lines), encoding="utf-8")
 
 
-def load(root):
+def load(root, verify_source=True):
     data = json.loads((root / "figures.json").read_text(encoding="utf-8"))
     if data.get("version") != 1:
         raise ValueError("Unsupported figures.json version")
-    if digest(root / "source.pdf") != data["sha256"]:
-        raise ValueError("source.pdf changed; prepare a new workspace")
+    if verify_source:
+        source = root / data.get("source", "source.pdf")
+        if digest(source) != data["sha256"]:
+            raise ValueError(f"{source.name} changed; prepare a new workspace")
     return data
 
 
@@ -136,8 +140,9 @@ def page_image(root, data, number):
     prefix = Path("pages") / f"page-{number:04d}"
     image = root / prefix.with_suffix(".png")
     if not image.exists():
+        image.parent.mkdir(parents=True, exist_ok=True)
         run(["pdftoppm", "-f", number, "-l", number, "-singlefile", "-r",
-             data["dpi"], "-png", "source.pdf", prefix], cwd=root)
+             data["dpi"], "-png", data.get("source", "source.pdf"), prefix], cwd=root)
     return image
 
 
@@ -150,19 +155,32 @@ def prepare(args):
     if not match:
         raise ValueError("Cannot determine page count from pdfinfo")
     root = args.workspace.resolve()
-    root.mkdir(parents=True, exist_ok=False)
+    source_name = source.name if source.parent == root else "source.pdf"
+    if source_name in ("article.pdf", "article.ru.pdf"):
+        raise ValueError("Input name conflicts with a generated PDF; rename the input "
+                         "or use a separate output directory")
+    reserved = ["raw", "pages", "images", "figures.json", "image-extraction.md",
+                "article.md", "article.ru.md", "article.pdf", "article.ru.pdf"]
+    if source.parent != root:
+        reserved.append("source.pdf")
+    for name in reserved:
+        if (root / name).exists() or (root / name).is_symlink():
+            raise ValueError(f"Workspace output already exists: {root / name}; "
+                             "reuse its manifest or choose a different directory")
+    root.mkdir(parents=True, exist_ok=True)
     for folder in ("raw", "pages", "images"):
         (root / folder).mkdir()
     create_git_files(root)
-    shutil.copyfile(source, root / "source.pdf")
+    if source.parent != root:
+        shutil.copyfile(source, root / source_name)
     (root / "raw/pdfinfo.txt").write_text(info, encoding="utf-8")
-    data = dict(version=1, dpi=args.dpi, page_count=int(match[1]),
-                sha256=digest(root / "source.pdf"), figures={})
+    data = dict(version=1, dpi=args.dpi, page_count=int(match[1]), source=source_name,
+                sha256=digest(root / source_name), figures={})
     save(root, data)
     for mode in ("layout", "raw"):
-        run(["pdftotext", f"-{mode}", "-enc", "UTF-8", "source.pdf",
+        run(["pdftotext", f"-{mode}", "-enc", "UTF-8", source_name,
              f"raw/{mode}.txt"], cwd=root)
-    images = run(["pdfimages", "-list", "source.pdf"], cwd=root)
+    images = run(["pdfimages", "-list", source_name], cwd=root)
     (root / "raw/pdfimages.txt").write_text(images, encoding="utf-8")
     print(root)
     print("Raw text extracted. Compare with page images before reconstruction.")
@@ -203,7 +221,7 @@ def extract_embedded(root, data, name, page, index, note):
         raise ValueError("Use a stable ID such as figure-01")
     if not 1 <= page <= data["page_count"] or index < 0:
         raise ValueError("Use a valid page and a nonnegative page-local image index")
-    commands = embedded_commands(name, page, index)
+    commands = embedded_commands(name, page, index, data.get("source", "source.pdf"))
     (root / commands[0][-1]).mkdir(parents=True, exist_ok=True)
     run(commands[1], cwd=root)
     source = root / commands[2][1]
@@ -340,9 +358,9 @@ def build(root, data, header=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    command = commands.add_parser("prepare", help="Create a new article workspace")
+    command = commands.add_parser("prepare", help="Prepare an article in the current or selected directory")
     command.add_argument("pdf", type=Path)
-    command.add_argument("workspace", type=Path)
+    command.add_argument("workspace", type=Path, nargs="?", default=Path("."))
     command.add_argument("--dpi", type=int, default=300)
     for name, help_text in (("page", "Render a full page"),
                             ("ocr", "OCR selected or all pages"),
@@ -380,7 +398,7 @@ def main():
             prepare(args)
             return
         root = args.workspace.resolve(strict=True)
-        data = load(root)
+        data = load(root, verify_source=args.command not in ("check", "readme", "build"))
         if args.command == "page":
             print(page_image(root, data, args.page))
         elif args.command == "ocr":
@@ -389,6 +407,7 @@ def main():
                 image = page_image(root, data, number)
                 text = run(["tesseract", image, "stdout", "-l", args.lang, "--psm", "3"])
                 target = root / "raw" / f"page-{number:04d}.ocr.txt"
+                target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(text, encoding="utf-8")
                 print(target)
         elif args.command == "figure":

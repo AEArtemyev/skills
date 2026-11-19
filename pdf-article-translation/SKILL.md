@@ -20,19 +20,25 @@ to this script. Reconstruction and translation are the agent's responsibility.
 
 ## Extract and reconstruct
 
-1. Run `python3 "$tool" prepare input.pdf output-directory`. The directory
-   must be new. This copies the input to `source.pdf` in the output directory,
-   leaving the original untouched, and extracts evidence into `raw/`.
-   If only an input PDF is provided, use a new `<input-stem>-translation`
-   directory beside it. The copied source supports repeatable extraction.
-   It also creates `.gitignore` for the three workspace PDFs and
-   `.gitattributes` with `* text=auto eol=lf` for text file line endings.
+1. Work in the current directory unless the user selects another output
+   directory. The normal setup is an existing directory containing the input
+   PDF. Run `python3 "$tool" prepare input.pdf` there. The script keeps that
+   PDF under its existing name and records it in `figures.json`; it does not
+   create a `source.pdf` copy. Existing article outputs cause preparation to
+   fail rather than overwrite them; resume an existing workspace from its
+   manifest instead of preparing it again.
+   An explicit output directory remains supported:
+   `python3 "$tool" prepare input.pdf output-directory`. If the input is
+   outside it, the script copies it there as `source.pdf`.
+   Preparation creates extraction evidence in `raw/`, `.gitignore` with
+   `*.pdf`, `/raw/`, and `/pages/`, and `.gitattributes` with
+   `* text=auto eol=lf`. Keep PDFs and intermediate files out of Git.
    Raw extraction is not finished Markdown.
-2. Run `python3 "$tool" page output-directory --page 1` and inspect the
+2. Run `python3 "$tool" page . --page 1` and inspect the
    generated page image. Compare extracted text with rendered pages. Repeat
    for every page used for reconstruction. Page numbers start at 1 and refer
    to physical PDF pages, independent of printed numbering.
-3. For scans or unusable text, run `python3 "$tool" ocr output-directory
+3. For scans or unusable text, run `python3 "$tool" ocr .
    --lang eng` for all pages, or add `--page N`. Select appropriate installed
    OCR languages. Correct columns, formulas, subscripts, and references
    against the page images; OCR text alone is insufficient evidence.
@@ -41,12 +47,13 @@ to this script. Reconstruction and translation are the agent's responsibility.
    and references. Compare every page's content with the Markdown. Mark
    illegible passages explicitly and report them instead of inventing text.
 5. Inspect `raw/pdfimages.txt` for embedded image objects. For a candidate,
-   inspect that page's objects with `pdfimages -f N -l N -list source.pdf`
-   from the workspace. The `num` column then gives page-local indices.
+   inspect that page's objects with `pdfimages -f N -l N -list input.pdf`
+   from the workspace, using the source filename recorded in `figures.json`.
+   The `num` column then gives page-local indices.
    Extract the candidate with:
 
    ```bash
-   python3 "$tool" embedded output-directory --id figure-01 --page 1 \
+   python3 "$tool" embedded . --id figure-01 --page 1 \
      --index 0 --note 'Embedded image candidate'
    ```
 
@@ -61,7 +68,7 @@ to this script. Reconstruction and translation are the agent's responsibility.
    If it does not match, replace it with a page crop using the same ID:
 
    ```bash
-   python3 "$tool" figure output-directory --id figure-01 --page 1 \
+   python3 "$tool" figure . --id figure-01 --page 1 \
      --box 1344 2340 895 680 --note 'Initial crop'
    ```
 
@@ -77,7 +84,8 @@ to this script. Reconstruction and translation are the agent's responsibility.
 
 `figures.json` records each extraction method and its parameters. The generated `image-extraction.md`
 contains current exact commands, previews, and crop history. Keep both with
-source.pdf and the article. Update them through the script. Always recrop
+the article. Keep the source PDF locally for future recropping, outside Git.
+Update the extraction records through the script. Always recrop
 from the source; preserve drawing content rather than painting over it.
 
 ## Translate to Russian
@@ -100,7 +108,7 @@ straight quotes, ordinary spaces, and `--` for a long dash. Preserve meaning
 when changing representation. Keep formulas identical in both articles.
 These rules apply to final Markdown, not raw extraction or OCR evidence.
 
-Run `python3 "$tool" check output-directory`. It checks local images,
+Run `python3 "$tool" check .`. It checks local images,
 registered crops, heading levels, image order, table counts, and math equality
 using Pandoc. It rejects disallowed characters with their file, line, column,
 and Unicode code point. Separately verify completeness, translation accuracy, table
@@ -109,13 +117,17 @@ contents, and references against the PDF; structural checks cannot prove these.
 Continue with the PDF build below. It creates one Russian `README.md` with
 the original article's English H1 title, Ubuntu/Debian dependency installation
 commands, a file inventory with Russian descriptions, and direct Pandoc commands
-for both PDFs. If the source title is
+for both PDFs. Omit `raw/` and `pages/` from the README inventory. If the source title is
 not English, translate only the README heading into English. No separate
 README.ru.md is generated. On an existing workspace, update old README
 instructions to this format while preserving user notes.
-For a Markdown-only request, run `python3 "$tool" readme output-directory`
+For a Markdown-only request, run `python3 "$tool" readme .`
 instead of building. Both commands create a default `header.tex` if absent
 and accept `--header PATH`. Existing headers and Git configuration are preserved.
+Checking Markdown and building PDFs do not require the original PDF or
+intermediate files. Extraction and crop corrections require the source PDF
+at its recorded path with the recorded SHA-256; page images are regenerated
+when needed. After cloning, restore the source PDF locally before recropping.
 
 ## Correct figure edges
 
@@ -123,7 +135,7 @@ Map user feedback to a figure ID. Inspect its original page and current crop,
 choose a measured change, then inspect the new result:
 
 ```bash
-python3 "$tool" adjust output-directory --id figure-01 --left 40 --top -20 \
+python3 "$tool" adjust . --id figure-01 --left 40 --top -20 \
   --note 'Restore left edge; reduce top margin'
 ```
 
@@ -144,7 +156,7 @@ builds. Inspect the active header before diagnosing failures. Resolve
 unsupported Unicode deliberately without silently losing content.
 
 ```bash
-python3 "$tool" build output-directory
+python3 "$tool" build .
 ```
 
 To use another preamble, add `--header /absolute/path/header.tex`. This uses

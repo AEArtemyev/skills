@@ -10,24 +10,21 @@ See the [repository README](../README.md) for installation and
 ## Usage
 
 ```text
-Use $pdf-article-translation with /path/to/input.pdf.
-Save the results to /path/to/output.
+Use $pdf-article-translation with ./input.pdf.
+Work in the current directory.
 ```
 
 The result contains:
 
 ```text
-.gitignore              Ignore source.pdf, article.pdf, and article.ru.pdf
+.gitignore              Ignore PDFs and intermediate files
 .gitattributes          Normalize text files to LF
-source.pdf              Copy of input; never edited
 article.md              Reconstructed original article
 article.ru.md           Russian translation
 README.md               Russian file inventory and build instructions; English title
 images/figure-01.png    Shared figure files
 figures.json            Extraction methods, parameters, and revision history
 image-extraction.md     Commands and figure previews
-raw/                    Extracted text and OCR evidence
-pages/                  Full-page images for visual review
 header.tex              Default preamble created by readme/build if absent
 article.pdf             Compiled original article
 article.ru.pdf          Compiled Russian translation
@@ -39,8 +36,10 @@ To correct a figure, describe the affected edge:
 Figure-03 is clipped on the left. Figure-07 has excess space below it.
 ```
 
-The source PDF is copied to `source.pdf` in a new output directory. If no
-output path is given, the skill uses `<input-stem>-translation` beside the input.
+Start Codex in a directory containing the input PDF. Results are written
+there by default, and the input is reused under its existing name. An
+explicit separate output directory is also supported.
+The generated `.gitignore` excludes `*.pdf`, `/raw/`, and `/pages/`.
 Figures can be extracted with `pdfimages` or cropped from a page; the agent
 must visually compare each result with the PDF before accepting it.
 English Markdown uses ASCII only. Russian Markdown allows ASCII and Russian
@@ -63,6 +62,8 @@ python3 pdf-article-translation/scripts/article.py build /path/to/output
 This creates `article.pdf` and `article.ru.pdf`. A default `header.tex` is
 created if absent; existing headers are preserved. To use another header,
 add `--header /path/to/header.tex`.
+The original PDF and intermediate files are not needed to build the Markdown.
+Restore the original PDF locally before changing figure crops after cloning.
 
 The output directory's Russian README contains Ubuntu/Debian dependency
 installation commands and direct Pandoc build commands.

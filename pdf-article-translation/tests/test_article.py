@@ -61,9 +61,9 @@ class ArticleTest(unittest.TestCase):
         self.call("figure", self.workspace, "--id", "figure-01", "--page", 1,
                   "--box", 30, 44, 50, 60, "--note", "Initial")
 
-    def call(self, *args, success=True):
+    def call(self, *args, success=True, cwd=None):
         result = subprocess.run([sys.executable, str(TOOL), *map(str, args)],
-                                capture_output=True, text=True)
+                                capture_output=True, text=True, cwd=cwd)
         if success:
             self.assertEqual(result.returncode, 0, result.stderr)
         else:
@@ -98,14 +98,56 @@ class ArticleTest(unittest.TestCase):
         self.call("prepare", self.source, self.workspace, success=False)
         self.assertEqual(article.png_size(self.workspace / "images/figure-01.png"), (50, 60))
 
+    def test_prepare_current_directory_reuses_original_and_recreates_caches(self):
+        root = self.workspace.parent / "current workspace"
+        root.mkdir()
+        source = root / "paper [v1].pdf"
+        make_pdf(source)
+        before = source.read_bytes()
+        notes = root / "notes.txt"
+        notes.write_text("Keep local notes.\n")
+        self.call("prepare", source.name, "--dpi", 72, cwd=root)
+        self.assertFalse((root / "source.pdf").exists())
+        self.assertEqual(article.load(root)["source"], source.name)
+        self.assertEqual(notes.read_text(), "Keep local notes.\n")
+        self.call("figure", ".", "--id", "figure-01", "--page", 1,
+                  "--box", 30, 44, 50, 60, "--note", "Initial", cwd=root)
+        image = root / "images/figure-01.png"
+        original_crop = image.read_bytes()
+        shutil.rmtree(root / "raw")
+        shutil.rmtree(root / "pages")
+        self.call("adjust", ".", "--id", "figure-01", "--left", 2,
+                  "--note", "Recreate page preview", cwd=root)
+        self.assertTrue((root / "pages/page-0001.png").exists())
+        self.call("embedded", ".", "--id", "figure-02", "--page", 1,
+                  "--index", 0, "--note", "Embedded candidate", cwd=root)
+        self.assertTrue((root / "raw/embedded/page-0001/image-000.png").exists())
+        data = article.load(root)
+        command = article.crop_command(data, "figure-01", {"page": 1, "box": [30, 44, 50, 60]})
+        article.run(command[:-1] + ["images/replayed"], cwd=root)
+        self.assertEqual((root / "images/replayed.png").read_bytes(), original_crop)
+        self.assertEqual(source.read_bytes(), before)
+
+    def test_prepare_rejects_source_name_that_build_would_overwrite(self):
+        root = self.workspace.parent / "reserved input"
+        root.mkdir()
+        source = root / "article.pdf"
+        make_pdf(source)
+        before = source.read_bytes()
+        result = self.call("prepare", source.name, cwd=root, success=False)
+        self.assertIn("conflicts with a generated PDF", result.stderr)
+        self.assertEqual(source.read_bytes(), before)
+        self.assertEqual(list(root.iterdir()), [source])
+
     @unittest.skipUnless(shutil.which("git"), "Git is required")
-    def test_git_rules_ignore_only_workspace_pdfs_and_normalize_text(self):
+    def test_git_rules_ignore_pdfs_and_intermediates_and_normalize_text(self):
         article.run(["git", "init", "--quiet", self.workspace])
-        for name in ("source.pdf", "article.pdf", "article.ru.pdf"):
+        for name in ("source.pdf", "article.pdf", "article.ru.pdf", "other.pdf",
+                     "nested/source.pdf", "raw/layout.txt", "pages/page-0001.png"):
             self.assertEqual(article.run(["git", "check-ignore", name],
                                          cwd=self.workspace).strip(), name)
-        result = subprocess.run(["git", "check-ignore", "other.pdf", "article.md",
-                                 "images/figure-01.png", "nested/source.pdf"],
+        result = subprocess.run(["git", "check-ignore", "article.md",
+                                 "images/figure-01.png", "raw-notes.md", "nested/pages/notes.txt"],
                                 cwd=self.workspace, capture_output=True)
         self.assertEqual(result.returncode, 1)
         text = self.workspace / "notes.md"
@@ -198,6 +240,12 @@ class ArticleTest(unittest.TestCase):
                 article.run(shlex.split(line), cwd=self.workspace)
         readme.write_text(instructions + "\nLocal notes.\n", encoding="utf-8")
 
+        # Markdown and figures suffice after cloning; ignored inputs are optional.
+        (self.workspace / "source.pdf").unlink()
+        shutil.rmtree(self.workspace / "raw")
+        shutil.rmtree(self.workspace / "pages")
+        self.call("check", self.workspace)
+
         edited = header.read_text() + "\n% User formatting change\n"
         header.write_text(edited, encoding="utf-8")
         self.call("build", self.workspace)
@@ -231,9 +279,9 @@ class ArticleTest(unittest.TestCase):
         inventory = content.split("```text\n", 1)[1].split("```", 1)[0]
         rows = [line.split(maxsplit=1) for line in inventory.strip().splitlines()]
         self.assertEqual({row[0] for row in rows}, {
-            ".gitignore", ".gitattributes", "source.pdf", "article.md", "article.ru.md",
+            ".gitignore", ".gitattributes", "article.md", "article.ru.md",
             "README.md", "images/figure-01.png", "figures.json", "image-extraction.md",
-            "raw/", "pages/", "header.tex", "article.pdf", "article.ru.pdf",
+            "header.tex", "article.pdf", "article.ru.pdf",
         })
         for filename, description in rows:
             self.assertTrue(any(0x0410 <= ord(c) <= 0x044F for c in description), filename)
